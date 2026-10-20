@@ -1,0 +1,19 @@
+# ============================================================================
+# ClinicFlow Public .htaccess
+# Rewrites all requests to index.php (front controller pattern).
+# Active only when served via Apache (XAMPP). PHP built-in server ignores this.
+# ============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # If the requested file or directory exists, serve it directly
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Otherwise, route everything to index.php
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
+
+# Prevent directory listing
+Options -Indexes
