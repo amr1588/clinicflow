@@ -264,7 +264,7 @@ CREATE TABLE `notifications` (
 CREATE TABLE `password_resets` (
   `id`              INT UNSIGNED    NOT NULL AUTO_INCREMENT,
   `user_id`         INT UNSIGNED    NOT NULL,
-  `otp`             VARCHAR(10)     NOT NULL,
+  `otp_hash`        VARCHAR(255)    NOT NULL,
   `attempts`        TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `max_attempts`    TINYINT UNSIGNED NOT NULL DEFAULT 5,
   `expires_at`      DATETIME        NOT NULL,

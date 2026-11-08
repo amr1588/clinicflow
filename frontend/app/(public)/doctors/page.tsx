@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Doctor, ApiResponse } from "@/types";
+import type { DoctorDetail, ApiResponse } from "@/types";
+import PendingOverlay from "@/components/PendingOverlay";
 
 /**
  * Doctors List Page — Public
@@ -10,7 +11,7 @@ import type { Doctor, ApiResponse } from "@/types";
  * Uses inline fetch (no shared wrapper) per project conventions.
  */
 export default function DoctorsPage() {
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctors, setDoctors] = useState<DoctorDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +30,7 @@ export default function DoctorsPage() {
           throw new Error(errData.error || "Failed to load doctors");
         }
 
-        const json: ApiResponse<Doctor[]> = await res.json();
+        const json: ApiResponse<DoctorDetail[]> = await res.json();
         setDoctors(json.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
@@ -46,27 +47,6 @@ export default function DoctorsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-50/20">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-cyan-500 text-white rounded-xl flex items-center justify-center text-sm font-bold shadow-md shadow-blue-500/20 group-hover:shadow-lg group-hover:shadow-blue-500/30 transition-shadow">
-              CF
-            </div>
-            <span className="text-lg font-bold text-slate-900 tracking-tight">
-              ClinicFlow
-            </span>
-          </Link>
-          <nav className="flex items-center gap-6 text-sm font-medium text-slate-600">
-            <Link
-              href="/doctors"
-              className="text-blue-600 border-b-2 border-blue-600 pb-0.5"
-            >
-              Doctors
-            </Link>
-          </nav>
-        </div>
-      </header>
 
       {/* Page Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
@@ -129,6 +109,7 @@ export default function DoctorsPage() {
                 href={`/doctors/${doctor.id}`}
                 className="group bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 hover:border-blue-200 transition-all duration-300 overflow-hidden"
               >
+                <PendingOverlay />
                 <div className="p-6">
                   {/* Doctor header */}
                   <div className="flex items-start gap-4">
