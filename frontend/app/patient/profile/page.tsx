@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import type { ApiResponse, User } from "@/types";
 
 export default function PatientProfilePage() {
@@ -14,7 +15,6 @@ export default function PatientProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Load the current user
   useEffect(() => {
     const loadProfile = async () => {
       try {
@@ -83,14 +83,14 @@ export default function PatientProfilePage() {
   };
 
   const inputClass =
-    "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
+    "w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition";
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-20 sm:px-6">
+      <main className="mx-auto max-w-2xl px-4 py-24 sm:px-6">
         <div className="flex flex-col items-center">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-          <p className="mt-4 text-sm text-slate-500">Loading profile…</p>
+          <p className="mt-4 text-sm text-slate-500 font-medium">Loading profile…</p>
         </div>
       </main>
     );
@@ -98,31 +98,53 @@ export default function PatientProfilePage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-        My Profile
-      </h1>
-      <p className="mt-2 text-base text-slate-500">
-        Update your personal details.
-      </p>
+      <motion.div
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+          My Profile
+        </h1>
+        <p className="mt-1 text-base text-slate-500">
+          Update your personal contact details and profile preferences.
+        </p>
+      </motion.div>
 
-      <div className="mt-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
-        {error && (
-          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {success}
-          </div>
-        )}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="mt-8 rounded-3xl border border-slate-200/80 bg-white p-7 shadow-sm sm:p-10"
+      >
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {error}
+            </motion.div>
+          )}
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+            >
+              ✓ {success}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {user && (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  First name
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  First name *
                 </label>
                 <input
                   name="first_name"
@@ -133,8 +155,8 @@ export default function PatientProfilePage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Last name
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Last name *
                 </label>
                 <input
                   name="last_name"
@@ -147,42 +169,47 @@ export default function PatientProfilePage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Email
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Email address
               </label>
               <input
                 value={user.email}
                 disabled
-                className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500`}
+                className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-400 border-dashed`}
               />
               <p className="mt-1 text-xs text-slate-400">
-                Email can&apos;t be changed here.
+                Email address is tied to your account credentials.
               </p>
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Phone
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Phone number
               </label>
               <input
                 type="tel"
                 name="phone"
                 value={form.phone}
                 onChange={handleChange}
+                placeholder="+1 555-0100"
                 className={inputClass}
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
+            <div className="pt-2">
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="submit"
+                disabled={saving}
+                className="rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Saving changes…" : "Save Changes"}
+              </motion.button>
+            </div>
           </form>
         )}
-      </div>
+      </motion.div>
     </main>
   );
 }

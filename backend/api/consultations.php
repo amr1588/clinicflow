@@ -66,8 +66,7 @@ if ($method === 'GET' && $id === 'history') {
         error_response('Appointment not found or not assigned to you', 404);
     }
 
-    // Only THIS doctor's own notes (c.doctor_id = ?). Remove that condition
-    // only if the clinic deliberately lets doctors read each other's notes.
+    // Return previous consultation notes for this patient across the clinic (newest first, current visit excluded).
     $stmt = $pdo->prepare('
         SELECT c.id,
                c.diagnosis,
@@ -75,24 +74,29 @@ if ($method === 'GET' && $id === 'history') {
                c.prescription,
                c.notes,
                c.created_at,
+               a.id               AS appointment_id,
                a.appointment_date AS date,
                a.appointment_time AS time,
-               s.name             AS service_name
+               s.name             AS service_name,
+               du.first_name      AS doctor_first_name,
+               du.last_name       AS doctor_last_name
         FROM   consultations c
         JOIN   appointments a ON a.id = c.appointment_id
         JOIN   services s     ON s.id = a.service_id
+        JOIN   doctors d      ON d.id = c.doctor_id
+        JOIN   users du       ON du.id = d.user_id
         WHERE  a.patient_id = ?
-          AND  c.doctor_id  = ?
           AND  a.id <> ?
         ORDER BY a.appointment_date DESC, a.appointment_time DESC
         LIMIT 20
     ');
-    $stmt->execute([(int) $current['patient_id'], $doctorId, $apptId]);
+    $stmt->execute([(int) $current['patient_id'], $apptId]);
     $rows = $stmt->fetchAll();
 
     foreach ($rows as &$row) {
-        $row['id']   = (int) $row['id'];
-        $row['time'] = substr($row['time'], 0, 5);   // "10:00:00" -> "10:00"
+        $row['id']             = (int) $row['id'];
+        $row['appointment_id'] = (int) $row['appointment_id'];
+        $row['time']           = substr($row['time'], 0, 5);   // "10:00:00" -> "10:00"
     }
     unset($row);
 

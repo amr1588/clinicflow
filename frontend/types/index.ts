@@ -145,9 +145,12 @@ export interface Patient {
 
 export interface ConsultationHistoryItem {
   id: number;
+  appointment_id?: number;
   date: string;              // "2026-11-10"
   time: string;              // "09:00"
   service_name: string;
+  doctor_first_name?: string;
+  doctor_last_name?: string;
   diagnosis: string | null;
   treatment: string | null;
   prescription: string | null;

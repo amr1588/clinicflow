@@ -2,7 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import type { Variants } from "framer-motion";
 import StatusBadge from "@/components/StatusBadge";
+import PreviousVisits from "@/components/PreviousVisits";
 import type { AppointmentStatus } from "@/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -37,6 +40,23 @@ function fmtDate(d: string) {
   });
 }
 
+// ── Shared Input Classes ────────────────────────────────────────────────────
+
+const inputCls =
+  "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition";
+
+// ── Animation Variants ─────────────────────────────────────────────────────
+
+const containerVariants: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.02 } },
+};
+
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.2, ease: "easeOut" } },
+};
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function DoctorAppointmentsPage() {
@@ -44,9 +64,9 @@ export default function DoctorAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
 
-  // Filters
   const [date,   setDate]   = useState(todayISO());
   const [status, setStatus] = useState("");
+  const [historyModalAppt, setHistoryModalAppt] = useState<DoctorAppointment | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +75,6 @@ export default function DoctorAppointmentsPage() {
       const params = new URLSearchParams();
       if (date)   params.set("date",   date);
       if (status) params.set("status", status);
-
       const res  = await fetch(`/api/appointments?${params}`, { credentials: "include" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
@@ -70,31 +89,42 @@ export default function DoctorAppointmentsPage() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/10">
+      <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
 
-      {/* Header + filters */}
-      <div className="mb-6 flex flex-wrap items-end gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">My Appointments</h1>
-          <p className="mt-0.5 text-sm text-slate-500">Your scheduled patient visits</p>
-        </div>
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="mb-8"
+        >
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Appointments</h1>
+          <p className="mt-1 text-slate-500">Your scheduled patient visits</p>
+        </motion.div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          {/* Date picker */}
+        {/* Filter bar */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.04, duration: 0.2 }}
+          className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 backdrop-blur-sm px-5 py-4 shadow-sm"
+        >
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Date</label>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            className={inputCls}
           />
 
-          {/* Status filter */}
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400 ml-2">Status</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            className={inputCls}
           >
-            <option value="">All statuses</option>
+            <option value="">All</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
             <option value="checked_in">Checked In</option>
@@ -105,77 +135,161 @@ export default function DoctorAppointmentsPage() {
 
           <button
             onClick={load}
-            className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+            className="ml-auto rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
           >
             ↻ Refresh
           </button>
-        </div>
-      </div>
+        </motion.div>
 
-      {/* Error */}
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div className="flex justify-center py-20">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-        </div>
-      )}
-
-      {/* Empty */}
-      {!loading && !error && appts.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 py-16 text-center">
-          <p className="text-sm text-slate-500">No appointments found for this selection.</p>
-        </div>
-      )}
-
-      {/* Appointments list */}
-      {!loading && appts.length > 0 && (
-        <div className="space-y-3">
-          {appts.map((a) => (
-            <div
-              key={a.id}
-              className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm hover:border-emerald-200 hover:shadow transition-all"
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
             >
-              {/* Time & date */}
-              <div className="min-w-[90px]">
-                <p className="font-semibold text-slate-900">{fmt12(a.time)}</p>
-                <p className="text-xs text-slate-400">{fmtDate(a.date)}</p>
-                <p className="text-xs text-slate-400">{a.duration_minutes} min</p>
-              </div>
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-              {/* Patient */}
-              <div className="flex-1 min-w-[140px]">
-                <p className="font-medium text-slate-900">
-                  {a.patient_first_name} {a.patient_last_name}
-                </p>
-                <p className="text-xs text-slate-400">{a.service_name}</p>
-              </div>
+        {/* Loading */}
+        {loading && (
+          <div className="flex justify-center py-24">
+            <div className="h-11 w-11 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+          </div>
+        )}
 
-              {/* Status */}
-              <StatusBadge status={a.status} />
+        {/* Empty */}
+        {!loading && !error && appts.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="rounded-2xl border border-dashed border-slate-300 bg-white py-20 text-center"
+          >
+            <p className="text-2xl mb-2">🗓️</p>
+            <p className="text-sm text-slate-500">No appointments for this selection.</p>
+          </motion.div>
+        )}
 
-              {/* Notes / link */}
-              <div className="ml-auto flex items-center gap-3">
-                {/* Show notes link only for checked-in or completed */}
-                {(a.status === "checked_in" || a.status === "completed") && (
-                  <Link
-                    href={`/doctor/appointments/${a.id}`}
-                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+        {/* Appointments list */}
+        {!loading && appts.length > 0 && (
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="space-y-3"
+          >
+            {appts.map((a) => (
+              <motion.div
+                key={a.id}
+                variants={cardVariants}
+                className="group flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all"
+              >
+                {/* Time block */}
+                <div className="flex h-14 w-14 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 shrink-0">
+                  <span className="text-sm font-bold leading-tight">{fmt12(a.time).split(" ")[0]}</span>
+                  <span className="text-[10px] font-semibold">{fmt12(a.time).split(" ")[1]}</span>
+                </div>
+
+                {/* Patient + service */}
+                <div className="flex-1 min-w-[140px]">
+                  <p className="font-semibold text-slate-900 text-base">
+                    {a.patient_first_name} {a.patient_last_name}
+                  </p>
+                  <p className="text-sm text-slate-400">{a.service_name} · {fmtDate(a.date)}</p>
+                </div>
+
+                {/* Duration */}
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {a.duration_minutes} min
+                </span>
+
+                {/* Status */}
+                <StatusBadge status={a.status} />
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryModalAppt(a)}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-emerald-700 transition-colors cursor-pointer"
+                    title="View patient history and previous notes"
                   >
-                    {a.status === "completed" ? "View Notes" : "Add Notes"}
-                  </Link>
-                )}
+                    📋 Past Notes
+                  </button>
+
+                  {(a.status === "checked_in" || a.status === "completed") && (
+                    <Link
+                      href={`/doctor/appointments/${a.id}`}
+                      className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-500/20"
+                    >
+                      {a.status === "completed" ? "View Notes" : "Add Notes →"}
+                    </Link>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </main>
+
+      {/* History Modal Dialog */}
+      <AnimatePresence>
+        {historyModalAppt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setHistoryModalAppt(null)}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-3xl bg-white shadow-2xl p-6 z-10"
+            >
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {historyModalAppt.patient_first_name} {historyModalAppt.patient_last_name}
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Patient medical notes history
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalAppt(null)}
+                  className="rounded-full h-8 w-8 flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </main>
+
+              <PreviousVisits
+                appointmentId={historyModalAppt.id}
+                patientName={`${historyModalAppt.patient_first_name} ${historyModalAppt.patient_last_name}`}
+              />
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalAppt(null)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
-

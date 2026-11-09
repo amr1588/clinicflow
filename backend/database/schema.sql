@@ -270,6 +270,7 @@ CREATE TABLE `password_resets` (
   `expires_at`      DATETIME        NOT NULL,
   `used_at`         DATETIME        DEFAULT NULL,
   `created_at`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `reminder_sent_at` DATETIME        DEFAULT NULL,
   PRIMARY KEY (`id`),
   INDEX `idx_pr_user` (`user_id`),
   INDEX `idx_pr_expires` (`expires_at`),

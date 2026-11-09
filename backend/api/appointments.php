@@ -1,19 +1,25 @@
 <?php
-
 declare(strict_types=1);
 
 /**
  * Appointments Endpoints
  *
- *   GET  /appointments/slots?doctor=ID&service=ID&date=YYYY-MM-DD   (public)
- *   POST /appointments                                              (logged-in patient)
- *   @var PDO $pdo
- *   @var string|null $id
- * $pdo and $id are provided by the front controller.
+ *   GET   /appointments/slots?doctor=&service=&date=   free times (public)
+ *   POST  /appointments                                book (logged-in patient)
+ *   GET   /appointments                                patient: own | secretary: all | doctor: own
+ *   GET   /appointments/:id                            one appointment (role-scoped)
+ *   PATCH /appointments/:id                            patient: cancel own
+ *                                                      secretary: confirm, check_in, complete, no_show, cancel
+ *
+ * $pdo and $id are provided by the front controller (public/index.php).
  * For GET /appointments/slots, $id is "slots".
+ *
+ * @var PDO $pdo
+ * @var string|null $id
  */
 
 $method = $_SERVER['REQUEST_METHOD'];
+
 require_once __DIR__ . '/../mail.php';
 
 // ---------------------------------------------------------------------------
@@ -30,7 +36,7 @@ function appt_positive_int(mixed $value): ?int
 /** Parses YYYY-MM-DD, rejects bad, past, and too-far dates. */
 function appt_parse_date(mixed $value): DateTimeImmutable
 {
-    $str  = is_string($value) ? $value : '';
+    $str = is_string($value) ? $value : '';
     $date = DateTimeImmutable::createFromFormat('!Y-m-d', $str);
 
     if (!$date || $date->format('Y-m-d') !== $str) {
@@ -113,20 +119,20 @@ function appt_get_available_slots(
 
     $booked = [];
     foreach ($stmt->fetchAll() as $row) {
-        $start    = appt_time_to_minutes($row['appointment_time']);
+        $start = appt_time_to_minutes($row['appointment_time']);
         $booked[] = [$start, $start + (int) $row['duration_minutes']];
     }
 
     // 3. If the date is today, hide times that already passed
-    $now        = new DateTimeImmutable('now');
-    $isToday    = $date->format('Y-m-d') === $now->format('Y-m-d');
+    $now = new DateTimeImmutable('now');
+    $isToday = $date->format('Y-m-d') === $now->format('Y-m-d');
     $nowMinutes = ((int) $now->format('H')) * 60 + (int) $now->format('i');
 
     // 4. Walk each block in steps of the service duration
     $slots = [];
     foreach ($blocks as $block) {
         $blockStart = appt_time_to_minutes($block['start_time']);
-        $blockEnd   = appt_time_to_minutes($block['end_time']);
+        $blockEnd = appt_time_to_minutes($block['end_time']);
 
         for ($t = $blockStart; $t + $duration <= $blockEnd; $t += $duration) {
             if ($isToday && $t <= $nowMinutes) {
@@ -155,22 +161,24 @@ function appt_get_available_slots(
 // GET /appointments/slots?doctor=1&service=2&date=2026-10-25
 // ---------------------------------------------------------------------------
 if ($method === 'GET' && $id === 'slots') {
-    $doctorId  = appt_positive_int($_GET['doctor'] ?? null);
+    $doctorId = appt_positive_int($_GET['doctor'] ?? null);
     $serviceId = appt_positive_int($_GET['service'] ?? null);
 
     if ($doctorId === null || $serviceId === null) {
         error_response('doctor and service are required', 422);
     }
 
-    $date    = appt_parse_date($_GET['date'] ?? null);
+    $date = appt_parse_date($_GET['date'] ?? null);
     $service = appt_get_service_for_doctor($pdo, $doctorId, $serviceId);
-    $slots   = appt_get_available_slots($pdo, $doctorId, $service['duration_minutes'], $date);
+    $slots = appt_get_available_slots($pdo, $doctorId, $service['duration_minutes'], $date);
 
-    json_response(['data' => [
-        'date'             => $date->format('Y-m-d'),
-        'duration_minutes' => $service['duration_minutes'],
-        'slots'            => $slots,
-    ]]);
+    json_response([
+        'data' => [
+            'date' => $date->format('Y-m-d'),
+            'duration_minutes' => $service['duration_minutes'],
+            'slots' => $slots,
+        ]
+    ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -188,10 +196,10 @@ if ($method === 'POST' && $id === null) {
     // 2. Validate input
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
-    $doctorId  = appt_positive_int($input['doctor_id'] ?? null);
+    $doctorId = appt_positive_int($input['doctor_id'] ?? null);
     $serviceId = appt_positive_int($input['service_id'] ?? null);
-    $time      = is_string($input['time'] ?? null) ? $input['time'] : '';
-    $reason    = trim((string) ($input['reason'] ?? ''));
+    $time = is_string($input['time'] ?? null) ? $input['time'] : '';
+    $reason = trim((string) ($input['reason'] ?? ''));
 
     if ($doctorId === null || $serviceId === null) {
         error_response('doctor_id and service_id are required', 422);
@@ -203,7 +211,7 @@ if ($method === 'POST' && $id === null) {
         error_response('Reason is too long (max 500 characters)', 422);
     }
 
-    $date    = appt_parse_date($input['date'] ?? null);
+    $date = appt_parse_date($input['date'] ?? null);
     $service = appt_get_service_for_doctor($pdo, $doctorId, $serviceId);
 
     // 3. Final slot check + insert, in one transaction
@@ -248,25 +256,29 @@ if ($method === 'POST' && $id === null) {
         throw $e;
     }
 
+    // Emails to the patient and the secretary.
+    // A failed email must never undo or break a booking that is already saved.
     try {
         notify_new_appointment($pdo, $appointmentId);
     } catch (Throwable $e) {
         error_log('Appointment email failed: ' . $e->getMessage());
     }
 
-    json_response(['data' => [
-        'id'               => $appointmentId,
-        'doctor_id'        => $doctorId,
-        'service_id'       => $serviceId,
-        'date'             => $date->format('Y-m-d'),
-        'time'             => $time,
-        'duration_minutes' => $service['duration_minutes'],
-        'status'           => 'pending',
-    ]], 201);
+    json_response([
+        'data' => [
+            'id' => $appointmentId,
+            'doctor_id' => $doctorId,
+            'service_id' => $serviceId,
+            'date' => $date->format('Y-m-d'),
+            'time' => $time,
+            'duration_minutes' => $service['duration_minutes'],
+            'status' => 'pending',
+        ]
+    ], 201);
 }
 
 // ---------------------------------------------------------------------------
-// GET /appointments  -→ patient sees own; secretary sees all (with filters)
+// GET /appointments  -> patient sees own; secretary sees all (filters); doctor sees own
 // ---------------------------------------------------------------------------
 if ($method === 'GET' && $id === null) {
     if (empty($_SESSION['user_id'])) {
@@ -274,6 +286,8 @@ if ($method === 'GET' && $id === null) {
     }
 
     $role = $_SESSION['role'] ?? '';
+
+    $validStatuses = ['pending', 'confirmed', 'checked_in', 'completed', 'cancelled', 'no_show'];
 
     // ── Patient: own appointments only ────────────────────────────────────
     if ($role === 'patient') {
@@ -301,9 +315,9 @@ if ($method === 'GET' && $id === null) {
         $rows = $stmt->fetchAll();
 
         foreach ($rows as &$row) {
-            $row['id']               = (int) $row['id'];
+            $row['id'] = (int) $row['id'];
             $row['duration_minutes'] = (int) $row['duration_minutes'];
-            $row['time']             = substr($row['time'], 0, 5);
+            $row['time'] = substr($row['time'], 0, 5);
         }
         unset($row);
 
@@ -312,28 +326,27 @@ if ($method === 'GET' && $id === null) {
 
     // ── Secretary: all appointments with optional filters ─────────────────
     if ($role === 'secretary') {
-        $where  = ['1=1'];
+        $where = ['1=1'];
         $params = [];
 
         // Filter by date
         if (!empty($_GET['date'])) {
-            $where[]  = 'a.appointment_date = ?';
+            $where[] = 'a.appointment_date = ?';
             $params[] = $_GET['date'];
         }
         // Filter by doctor
         if (!empty($_GET['doctor_id'])) {
-            $where[]  = 'a.doctor_id = ?';
+            $where[] = 'a.doctor_id = ?';
             $params[] = (int) $_GET['doctor_id'];
         }
         // Filter by status
-        $validStatuses = ['pending','confirmed','checked_in','completed','cancelled','no_show'];
         if (!empty($_GET['status']) && in_array($_GET['status'], $validStatuses, true)) {
-            $where[]  = 'a.status = ?';
+            $where[] = 'a.status = ?';
             $params[] = $_GET['status'];
         }
-        // Default: show today if no date given
+        // Default: show today if no date and no status given
         if (empty($_GET['date']) && empty($_GET['status'])) {
-            $where[]  = 'a.appointment_date = CURDATE()';
+            $where[] = 'a.appointment_date = CURDATE()';
         }
 
         $whereClause = implode(' AND ', $where);
@@ -367,9 +380,9 @@ if ($method === 'GET' && $id === null) {
         $rows = $stmt->fetchAll();
 
         foreach ($rows as &$row) {
-            $row['id']               = (int) $row['id'];
+            $row['id'] = (int) $row['id'];
             $row['duration_minutes'] = (int) $row['duration_minutes'];
-            $row['time']             = substr($row['time'], 0, 5);
+            $row['time'] = substr($row['time'], 0, 5);
         }
         unset($row);
 
@@ -382,28 +395,29 @@ if ($method === 'GET' && $id === null) {
         $stmt = $pdo->prepare('SELECT id FROM doctors WHERE user_id = ?');
         $stmt->execute([(int) $_SESSION['user_id']]);
         $dr = $stmt->fetch();
-        if (!$dr) error_response('Doctor profile not found', 404);
+        if (!$dr) {
+            error_response('Doctor profile not found', 404);
+        }
         $doctorId = (int) $dr['id'];
 
-        $where  = ['a.doctor_id = ?'];
+        $where = ['a.doctor_id = ?'];
         $params = [$doctorId];
 
         // Optional date filter
         if (!empty($_GET['date'])) {
-            $where[]  = 'a.appointment_date = ?';
+            $where[] = 'a.appointment_date = ?';
             $params[] = $_GET['date'];
         }
 
         // Optional status filter
-        $validStatuses = ['pending','confirmed','checked_in','completed','cancelled','no_show'];
         if (!empty($_GET['status']) && in_array($_GET['status'], $validStatuses, true)) {
-            $where[]  = 'a.status = ?';
+            $where[] = 'a.status = ?';
             $params[] = $_GET['status'];
         }
 
         // Default: show today when no date and no status given
         if (empty($_GET['date']) && empty($_GET['status'])) {
-            $where[]  = 'a.appointment_date = CURDATE()';
+            $where[] = 'a.appointment_date = CURDATE()';
         }
 
         $whereClause = implode(' AND ', $where);
@@ -429,9 +443,9 @@ if ($method === 'GET' && $id === null) {
         $rows = $stmt->fetchAll();
 
         foreach ($rows as &$row) {
-            $row['id']               = (int) $row['id'];
+            $row['id'] = (int) $row['id'];
             $row['duration_minutes'] = (int) $row['duration_minutes'];
-            $row['time']             = substr($row['time'], 0, 5);
+            $row['time'] = substr($row['time'], 0, 5);
         }
         unset($row);
 
@@ -442,35 +456,43 @@ if ($method === 'GET' && $id === null) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /appointments/:id  — single appointment detail (doctor, patient, secretary)
+// GET /appointments/:id  -> single appointment (doctor, patient, secretary)
 // ---------------------------------------------------------------------------
 if ($method === 'GET' && $id !== null && $id !== 'slots') {
     if (empty($_SESSION['user_id'])) {
         error_response('Please log in', 401);
     }
 
-    $appointmentId = filter_var($id, FILTER_VALIDATE_INT);
-    if (!$appointmentId || $appointmentId <= 0) {
+    $appointmentId = appt_positive_int($id);
+    if ($appointmentId === null) {
         error_response('Invalid appointment id', 400);
     }
 
     $role = $_SESSION['role'] ?? '';
 
-    // Build a role-specific WHERE clause so each role only sees what they own
+    // Each role only sees what it owns. Everything goes through placeholders.
+    $params = [$appointmentId];
+
     if ($role === 'doctor') {
-        // Resolve doctors.id from session user id
         $stmt = $pdo->prepare('SELECT id FROM doctors WHERE user_id = ?');
         $stmt->execute([(int) $_SESSION['user_id']]);
         $dr = $stmt->fetch();
-        if (!$dr) error_response('Doctor profile not found', 404);
-        $extraWhere = "AND a.doctor_id = {$dr['id']}";
+        if (!$dr) {
+            error_response('Doctor profile not found', 404);
+        }
+        $extraWhere = 'AND a.doctor_id = ?';
+        $params[] = (int) $dr['id'];
     } elseif ($role === 'secretary') {
         $extraWhere = '';
     } elseif ($role === 'patient') {
-        $extraWhere = "AND a.patient_id = {$_SESSION['user_id']}";
+        $extraWhere = 'AND a.patient_id = ?';
+        $params[] = (int) $_SESSION['user_id'];
     } else {
         error_response('Forbidden', 403);
     }
+
+    // The secretary's internal notes are only for the secretary
+    $notesColumn = $role === 'secretary' ? 'a.notes,' : '';
 
     $stmt = $pdo->prepare("
         SELECT a.id,
@@ -478,7 +500,7 @@ if ($method === 'GET' && $id !== null && $id !== 'slots') {
                a.appointment_time   AS time,
                a.duration_minutes,
                a.status,
-               a.notes,
+               {$notesColumn}
                a.cancellation_reason,
                pu.first_name        AS patient_first_name,
                pu.last_name         AS patient_last_name,
@@ -496,24 +518,24 @@ if ($method === 'GET' && $id !== null && $id !== 'slots') {
         JOIN services s ON s.id  = a.service_id
         WHERE a.id = ? {$extraWhere}
     ");
-    $stmt->execute([$appointmentId]);
+    $stmt->execute($params);
     $row = $stmt->fetch();
 
     if (!$row) {
         error_response('Appointment not found', 404);
     }
 
-    $row['id']               = (int) $row['id'];
+    $row['id'] = (int) $row['id'];
     $row['duration_minutes'] = (int) $row['duration_minutes'];
-    $row['time']             = substr($row['time'], 0, 5);
+    $row['time'] = substr($row['time'], 0, 5);
 
     json_response(['data' => $row]);
 }
 
 // ---------------------------------------------------------------------------
 // PATCH /appointments/:id
-// • Patients: can only "cancel" their own Pending/Confirmed appointments
-// • Secretary: can perform all valid transitions per the state machine
+//   Patients:  can only "cancel" their own Pending/Confirmed appointments
+//   Secretary: can perform all valid transitions per the state machine
 // ---------------------------------------------------------------------------
 if ($method === 'PATCH' && $id !== null) {
     if (empty($_SESSION['user_id'])) {
@@ -525,10 +547,10 @@ if ($method === 'PATCH' && $id !== null) {
         error_response('Invalid appointment id', 400);
     }
 
-    $input  = json_decode(file_get_contents('php://input'), true) ?? [];
-    $action = trim($input['action'] ?? '');
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $action = trim((string) ($input['action'] ?? ''));
     $reason = trim((string) ($input['reason'] ?? ''));
-    $notes  = trim((string) ($input['notes']  ?? ''));
+    $notes = trim((string) ($input['notes'] ?? ''));
 
     $role = $_SESSION['role'] ?? '';
 
@@ -541,6 +563,7 @@ if ($method === 'PATCH' && $id !== null) {
             error_response('Reason is too long (max 500 characters)', 422);
         }
 
+        // Ownership check: if it is not theirs, answer 404 so we don't reveal the id exists
         $stmt = $pdo->prepare("
             SELECT status, appointment_date, appointment_time
             FROM appointments
@@ -560,6 +583,8 @@ if ($method === 'PATCH' && $id !== null) {
             error_response('This appointment has already started. Please contact the clinic.', 409);
         }
 
+        // The status condition keeps this safe even if the secretary changed the
+        // status a split second ago (rowCount would be 0).
         $stmt = $pdo->prepare("
             UPDATE appointments
             SET status = 'cancelled', cancellation_reason = ?
@@ -571,6 +596,14 @@ if ($method === 'PATCH' && $id !== null) {
             error_response('This appointment can no longer be cancelled', 409);
         }
 
+        // Notify the secretary (and send the patient a confirmation).
+        // A failed email must never break a cancellation that is already saved.
+        try {
+            notify_appointment_cancelled($pdo, $appointmentId, 'patient');
+        } catch (Throwable $e) {
+            error_log('Cancellation email failed: ' . $e->getMessage());
+        }
+
         json_response(['data' => ['id' => $appointmentId, 'status' => 'cancelled']]);
     }
 
@@ -578,20 +611,24 @@ if ($method === 'PATCH' && $id !== null) {
     if ($role === 'secretary') {
         // Valid secretary actions and which source statuses they require
         $transitions = [
-            'confirm'    => ['from' => ['pending'],              'to' => 'confirmed'],
-            'check_in'   => ['from' => ['confirmed'],            'to' => 'checked_in'],
-            'complete'   => ['from' => ['checked_in'],           'to' => 'completed'],
-            'no_show'    => ['from' => ['confirmed'],            'to' => 'no_show'],
-            'cancel'     => ['from' => ['pending','confirmed'],  'to' => 'cancelled'],
+            'confirm' => ['from' => ['pending'], 'to' => 'confirmed'],
+            'check_in' => ['from' => ['confirmed'], 'to' => 'checked_in'],
+            'complete' => ['from' => ['checked_in'], 'to' => 'completed'],
+            'no_show' => ['from' => ['confirmed'], 'to' => 'no_show'],
+            'cancel' => ['from' => ['pending', 'confirmed'], 'to' => 'cancelled'],
         ];
 
         if (!array_key_exists($action, $transitions)) {
             error_response('Invalid action. Use: confirm, check_in, complete, no_show, cancel', 422);
         }
+        if (mb_strlen($reason) > 500) {
+            error_response('Reason is too long (max 500 characters)', 422);
+        }
+        if (mb_strlen($notes) > 2000) {
+            error_response('Notes are too long (max 2000 characters)', 422);
+        }
 
-        $stmt = $pdo->prepare("
-            SELECT id, status FROM appointments WHERE id = ?
-        ");
+        $stmt = $pdo->prepare("SELECT id, status FROM appointments WHERE id = ?");
         $stmt->execute([$appointmentId]);
         $appt = $stmt->fetch();
 
@@ -610,7 +647,7 @@ if ($method === 'PATCH' && $id !== null) {
 
         $newStatus = $transition['to'];
 
-        // Update — also allow updating secretary notes at the same time
+        // Update: also allow updating secretary notes at the same time
         $stmt = $pdo->prepare("
             UPDATE appointments
             SET status = ?,
@@ -624,6 +661,17 @@ if ($method === 'PATCH' && $id !== null) {
             $notes,
             $appointmentId,
         ]);
+
+        // Email the patient about confirmations and cancellations
+        try {
+            if ($action === 'confirm') {
+                notify_appointment_confirmed($pdo, $appointmentId);
+            } elseif ($action === 'cancel') {
+                notify_appointment_cancelled($pdo, $appointmentId, 'secretary');
+            }
+        } catch (Throwable $e) {
+            error_log('Appointment status email failed: ' . $e->getMessage());
+        }
 
         json_response(['data' => ['id' => $appointmentId, 'status' => $newStatus]]);
     }
