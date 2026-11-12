@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Variants } from "framer-motion";
 import StatusBadge from "@/components/StatusBadge";
@@ -62,6 +62,7 @@ const cardVariants: Variants = {
 
 export default function DoctorAppointmentsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [appts,   setAppts]   = useState<DoctorAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
@@ -70,6 +71,18 @@ export default function DoctorAppointmentsPage() {
   const [status, setStatus] = useState("");
   const [historyModalAppt, setHistoryModalAppt] = useState<DoctorAppointment | null>(null);
   const [navigatingId, setNavigatingId] = useState<number | null>(null);
+
+  // Clear loading state when page mounts, pathname changes, or window regains focus/shows from cache
+  useEffect(() => {
+    setNavigatingId(null);
+    const handleReset = () => setNavigatingId(null);
+    window.addEventListener("pageshow", handleReset);
+    window.addEventListener("focus", handleReset);
+    return () => {
+      window.removeEventListener("pageshow", handleReset);
+      window.removeEventListener("focus", handleReset);
+    };
+  }, [pathname]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -239,6 +252,10 @@ export default function DoctorAppointmentsPage() {
                       onClick={() => {
                         setNavigatingId(a.id);
                         router.push(`/doctor/appointments/${a.id}`);
+                        // Safety timeout: auto-clear after 2.5s so button is never permanently stuck
+                        setTimeout(() => {
+                          setNavigatingId(null);
+                        }, 2500);
                       }}
                       className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-500/20 disabled:opacity-80 cursor-pointer"
                     >
