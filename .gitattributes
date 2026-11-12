@@ -1,0 +1,19 @@
+# Normalize line endings for text files
+* text=auto
+
+# Explicitly declare binary image files — prevents Git from corrupting them
+# via CRLF normalization or encoding transformations
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.svg text eol=lf
+
+# Other common binary assets
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
