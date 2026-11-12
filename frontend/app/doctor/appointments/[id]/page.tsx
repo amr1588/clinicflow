@@ -90,44 +90,38 @@ export default function DoctorAppointmentDetailPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [toast,     setToast]     = useState<string | null>(null);
 
-  // ── Load appointment ──────────────────────────────────────────────────────
+  // ── Load appointment and consultation in parallel ────────────────────────
 
   useEffect(() => {
     if (!apptId) return;
     (async () => {
       setApptLoading(true);
+      setConsultLoading(true);
       try {
-        const res  = await fetch(`/api/appointments/${apptId}`, { credentials: "include" });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "Failed to load appointment");
-        setAppt(json.data);
+        const [apptRes, consultRes] = await Promise.all([
+          fetch(`/api/appointments/${apptId}`, { credentials: "include" }),
+          fetch(`/api/consultations?appointment_id=${apptId}`, { credentials: "include" }),
+        ]);
+
+        const apptJson = await apptRes.json();
+        if (!apptRes.ok) throw new Error(apptJson.error ?? "Failed to load appointment");
+        setAppt(apptJson.data);
+
+        if (consultRes.ok) {
+          const consultJson = await consultRes.json();
+          const c: Consultation | null = consultJson.data;
+          setConsult(c);
+          if (c) {
+            setDiagnosis(c.diagnosis ?? "");
+            setTreatment(c.treatment ?? "");
+            setPrescription(c.prescription ?? "");
+            setClinicNotes(c.notes ?? "");
+          }
+        }
       } catch (e) {
         setApptError(e instanceof Error ? e.message : "Error");
       } finally {
         setApptLoading(false);
-      }
-    })();
-  }, [apptId]);
-
-  // ── Load consultation ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!apptId) return;
-    (async () => {
-      setConsultLoading(true);
-      try {
-        const res  = await fetch(`/api/consultations?appointment_id=${apptId}`, { credentials: "include" });
-        const json = await res.json();
-        if (!res.ok) return;
-        const c: Consultation | null = json.data;
-        setConsult(c);
-        if (c) {
-          setDiagnosis(c.diagnosis    ?? "");
-          setTreatment(c.treatment    ?? "");
-          setPrescription(c.prescription ?? "");
-          setClinicNotes(c.notes      ?? "");
-        }
-      } finally {
         setConsultLoading(false);
       }
     })();
@@ -174,8 +168,11 @@ export default function DoctorAppointmentDetailPage() {
 
   if (apptLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/10 flex items-center justify-center">
-        <div className="h-11 w-11 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/10 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-11 w-11 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+          <p className="text-sm font-medium text-slate-500 animate-pulse">Loading consultation notes...</p>
+        </div>
       </div>
     );
   }

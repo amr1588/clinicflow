@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Variants } from "framer-motion";
 import StatusBadge from "@/components/StatusBadge";
@@ -60,6 +61,7 @@ const cardVariants: Variants = {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function DoctorAppointmentsPage() {
+  const router = useRouter();
   const [appts,   setAppts]   = useState<DoctorAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
@@ -67,6 +69,7 @@ export default function DoctorAppointmentsPage() {
   const [date,   setDate]   = useState(todayISO());
   const [status, setStatus] = useState("");
   const [historyModalAppt, setHistoryModalAppt] = useState<DoctorAppointment | null>(null);
+  const [navigatingId, setNavigatingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,6 +93,13 @@ export default function DoctorAppointmentsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/10">
+      {/* Top Loading Progress Bar when navigating */}
+      {navigatingId !== null && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-1 overflow-hidden bg-emerald-100">
+          <div className="h-full w-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 animate-pulse" />
+        </div>
+      )}
+
       <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
 
         {/* Header */}
@@ -222,12 +232,25 @@ export default function DoctorAppointmentsPage() {
                   </button>
 
                   {(a.status === "checked_in" || a.status === "completed") && (
-                    <Link
-                      href={`/doctor/appointments/${a.id}`}
-                      className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-500/20"
+                    <button
+                      type="button"
+                      disabled={navigatingId !== null}
+                      onMouseEnter={() => router.prefetch(`/doctor/appointments/${a.id}`)}
+                      onClick={() => {
+                        setNavigatingId(a.id);
+                        router.push(`/doctor/appointments/${a.id}`);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-500/20 disabled:opacity-80 cursor-pointer"
                     >
-                      {a.status === "completed" ? "View Notes" : "Add Notes →"}
-                    </Link>
+                      {navigatingId === a.id ? (
+                        <>
+                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          <span>Loading...</span>
+                        </>
+                      ) : (
+                        <span>{a.status === "completed" ? "View Notes" : "Add Notes →"}</span>
+                      )}
+                    </button>
                   )}
                 </div>
               </motion.div>
