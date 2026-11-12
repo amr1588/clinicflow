@@ -43,36 +43,80 @@ Built to model a real clinic's workflow rather than a generic CRUD app: business
 
 ## Features
 
-**Patients**
-- Browse doctors and services without an account
-- Book in a guided flow (doctor, service, date, time). The selection survives the login/register redirect
-- View upcoming, past, and cancelled appointments, and cancel their own
-- Edit their profile and reset a forgotten password with an emailed code
+### Patients
+- Browse doctors, specialties, and clinic services publicly without requiring an account
+- Guided booking flow (doctor, service, date, time slot) where the selection survives the login/register redirect
+- Patient dashboard with tabbed appointments (`Upcoming`, `Past`, `Cancelled`)
+- Cancel upcoming appointments directly from the dashboard with an optional cancellation reason
+- Profile management (update contact info, change password)
+- Self-service password recovery via emailed 6-digit verification code
 
-**Secretary**
-- See and filter all appointments
-- Confirm, check in, complete, mark no-show, or cancel through a controlled status lifecycle
+### Secretary (Clinic Administration)
+- **Appointment Operations**: Full view of all appointments across the clinic with date, doctor, and status filters; controlled lifecycle transitions (`confirm`, `check_in`, `complete`, `no_show`, `cancel`); add internal operational notes on appointment cards
+- **Doctor Management**: Add new doctors with full profiles (specialty, bio, consultation fee, default duration, initial password); assign offered services; configure custom weekly working hours per day (start/end times and enabled days); toggle doctors active or inactive
+- **Services Catalog**: Create and maintain clinic services with custom pricing and duration in minutes; toggle availability on/off
+- **Patient Directory**: Searchable, paginated registry of all registered patients with contact details, registration dates, and total visit counts
+- **Lead Pipeline (CRM)**: Manage incoming patient inquiries through a 6-stage lifecycle (`new` -> `contacted` -> `interested` -> `appointment_booked` -> `closed` -> `lost`), maintain internal notes, and convert leads directly into booked appointments
 
-**Doctors**
-- See their own appointments
-- Write consultation notes (diagnosis, treatment, prescription, private notes)
-- See the same patient's previous visit notes when opening a new appointment
+### Doctors
+- Dedicated appointments view with date and status filters
+- **Quick-view Past Notes modal**: 1-click preview of a patient's entire medical history directly from the appointments list
+- **Consultation View**: Responsive side-by-side workspace with current clinical note editor on the left and full **Patient Medical History** on the right
+- **1-Click Copy Shortcuts**: Quickly carry forward prior diagnoses, treatment plans, or prescriptions into the current consultation form without retyping
+- Structured records: Diagnosis, Treatment Plan, Prescription, and Private Clinical Notes (enforced server-side: readable only by doctors)
 
-**Automation (Brevo transactional email)**
-- Appointment request: confirmation to the patient, notification to the secretary
-- Appointment confirmed and cancelled notices
-- Reminder the day before (scheduled script)
-- Password reset code
+### Automated Notifications (Brevo REST API)
+- **Appointment Requested**: Confirmation email to the patient and instant notification to the clinic secretary
+- **Appointment Confirmed**: Notification email to the patient with clinic visit details
+- **Appointment Cancelled**: Cancellation confirmation to the patient (including reason)
+- **Day-Before Reminder**: Automated daily scheduled script (`backend/cron/send_reminders.php`) to remind patients of tomorrow's appointments
+- **Password Reset**: Secure one-time 6-digit verification code email
 
 ## Business rules enforced in the backend
 
-- A doctor can never be double-booked, including overlapping times (transaction with a row lock, plus a unique constraint as a safety net)
-- No bookings in the past, only active doctors, and only services that doctor offers
-- The slot is re-validated when the booking is confirmed
-- Status transitions follow a state machine (for example, a cancelled appointment cannot become completed)
-- Patients can only see and cancel their own appointments (ownership is checked on the server)
-- Consultation notes are readable only by the owning doctor, never by patients or the secretary
-- Cancelled appointments are kept as records. Their time slot becomes available again
+- **Double-booking prevention**: Concurrency control using MySQL row-level locking (`FOR UPDATE`) within a transaction, combined with a unique database constraint on `(doctor_id, appointment_date, appointment_time)` as a safety net
+- **Valid booking window**: Bookings cannot be in the past; only active doctors with active services during their configured working hours can be booked
+- **Strict role-based authorization**: Every sensitive endpoint validates authentication, role, and record ownership (e.g., only secretaries manage doctors/services/leads; only doctors write consultation notes; patients can only view and cancel their own appointments)
+- **Controlled state machine**: Appointments strictly follow valid status transitions (e.g., `completed` cannot be cancelled; `no_show` only applies to `confirmed` appointments)
+- **Doctor active/inactive status**: Deactivating a doctor immediately hides them from new public bookings while preserving all historical appointments and consultation notes
+- **Cancellation slot release**: Cancelled appointments are preserved as audit records, and their time slot is immediately released for new bookings
+- **Secure password reset**: SHA-256 hashed code storage, 10-minute expiration, 60-second request cooldown, and maximum 5 failed attempts before code invalidation
+
+## REST API Overview
+
+| Resource | Method | Path | Auth / Role | Description |
+|---|---|---|---|---|
+| **Auth** | `POST` | `/auth/register` | Public | Register new patient account |
+| | `POST` | `/auth/login` | Public | Authenticate user & start session |
+| | `GET` | `/auth/me` | Logged in | Get current user profile |
+| | `POST` | `/auth/logout` | Logged in | End session & clear cookie |
+| | `PATCH` | `/auth/profile` | Logged in | Update name, phone, or password |
+| | `POST` | `/auth/forgot-password` | Public | Send 6-digit password reset code |
+| | `POST` | `/auth/verify-code` | Public | Validate password reset code |
+| | `POST` | `/auth/reset-password` | Public | Reset password with verified code |
+| **Appointments** | `GET` | `/appointments/slots` | Public | Available time slots for doctor + service + date |
+| | `GET` | `/appointments` | Patient / Dr / Sec | Role-filtered appointment list |
+| | `GET` | `/appointments/:id` | Patient / Dr / Sec | Single appointment details |
+| | `POST` | `/appointments` | Patient / Sec | Book new appointment (with row lock) |
+| | `PATCH` | `/appointments/:id` | Patient / Sec | Cancel (patient) or state transition (secretary) |
+| **Consultations** | `GET` | `/consultations` | Doctor | Notes for a specific appointment |
+| | `GET` | `/consultations/history` | Doctor | Patient's previous clinic consultation history |
+| | `POST` | `/consultations` | Doctor | Upsert diagnosis, treatment, prescription, notes |
+| **Doctors** | `GET` | `/doctors` | Public | List all active doctors & offered services |
+| | `GET` | `/doctors/:id` | Public | Doctor profile, bio, services & working hours |
+| | `POST` | `/doctors` | Secretary | Create doctor account, profile, hours & services |
+| | `PATCH` | `/doctors/:id` | Secretary | Update profile, toggle active, update hours/services |
+| **Services** | `GET` | `/services` | Public | List all active clinic services |
+| | `GET` | `/services/:id` | Public | Single service detail |
+| | `POST` | `/services` | Secretary | Create new clinic service |
+| | `PATCH` | `/services/:id` | Secretary | Update service or toggle active status |
+| **Patients** | `GET` | `/patients` | Secretary | Paginated patient registry with search |
+| | `GET` | `/patients/:id` | Secretary | Patient profile & appointment history summary |
+| **Leads** | `POST` | `/leads` | Public | Submit contact form inquiry |
+| | `GET` | `/leads` | Secretary | List and filter leads by status |
+| | `GET` | `/leads/:id` | Secretary | Lead details & internal notes |
+| | `PATCH` | `/leads/:id` | Secretary | Update lead status (`new` → `closed`) and notes |
+| | `POST` | `/leads/:id/convert` | Secretary | Convert lead into a booked appointment |
 
 ## Tech stack
 
@@ -162,12 +206,14 @@ Not claiming the system is completely secure. See the roadmap for what is still 
 
 ## Roadmap
 
-- [ ] CSRF protection and login/register rate limiting
-- [ ] Contact form that captures leads, with a lead pipeline for the secretary (new, contacted, interested, booked, closed)
-- [ ] Full secretary dashboard: patients, doctors, services, and working hours management
-- [ ] Rescheduling appointments
-- [ ] Refactor repeated `fetch` calls into a shared API client
-- [ ] Optional: one external CRM integration
+- [x] Contact form capturing public leads with a 6-stage pipeline for the secretary (`new` → `closed`)
+- [x] Full secretary administration suite: manage doctors, weekly working hours, clinic services, and patients registry
+- [x] Doctor consultation workspace with side-by-side past medical history & 1-click copy helpers
+- [x] Transactional email automation via Brevo REST API (booking requests, confirmations, cancellations, reminders, and password reset codes)
+- [ ] Direct appointment rescheduling from the patient and secretary dashboards
+- [ ] CSRF token verification and API rate limiting on authentication routes
+- [ ] Refactor repeated frontend `fetch` calls into a shared HTTP client
+- [ ] Multi-language support (English / Arabic)
 
 ## Author
 
