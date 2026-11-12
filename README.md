@@ -4,13 +4,46 @@ A full-stack clinic appointment and patient management platform. Patients book o
 
 Built to model a real clinic's workflow rather than a generic CRUD app: business rules are enforced in the backend, and each role only sees what it should.
 
+## Screenshots
+
+### From booking to consultation
+
+| 1. Selection is kept before login | 2. Back at the booking after login |
+|---|---|
+| ![Booking before login](docs/screenshots/booking-before-login.png) | ![Booking after login](docs/screenshots/booking-after-login.png) |
+
+| 3. Secretary receives the request | 4. Secretary actions after confirming |
+|---|---|
+| ![Request received](docs/screenshots/secretary-request-received.png) | ![Secretary actions](docs/screenshots/secretary-actions-after-confirm.png) |
+
+| 5. Patient gets the confirmation email | 6. Doctor adds notes and sees patient history |
+|---|---|
+| ![Confirmation email](docs/screenshots/patient-email-confirmed.png) | ![Doctor notes](docs/screenshots/doctor-adding-and-viewing-notes.png) |
+
+<details>
+<summary>More screenshots (6)</summary>
+
+| Patient appointments | Doctor appointments |
+|---|---|
+| ![Patient appointments](docs/screenshots/patient-appointments.png) | ![Doctor appointments](docs/screenshots/doctor-appointments.png) |
+
+| Doctor notes view | Login |
+|---|---|
+| ![Notes view](docs/screenshots/doctor-appointments-notes-view.png) | ![Login](docs/screenshots/login.png) |
+
+| Forgot password | Verification code email |
+|---|---|
+| ![Forgot password](docs/screenshots/forgot-password.png) | ![Code email](docs/screenshots/forgot-password-email-code.png) |
+
+</details>
+
 ## Features
 
 **Patients**
 - Browse doctors and services without an account
 - Book in a guided flow (doctor, service, date, time). The selection survives the login/register redirect
 - View upcoming, past, and cancelled appointments, and cancel their own
-- Edit their profile, reset a forgotten password with an emailed code
+- Edit their profile and reset a forgotten password with an emailed code
 
 **Secretary**
 - See and filter all appointments
@@ -131,10 +164,6 @@ Not claiming the system is completely secure. See the roadmap for what is still 
 - [ ] Rescheduling appointments
 - [ ] Refactor repeated `fetch` calls into a shared API client
 - [ ] Optional: one external CRM integration
-
-## Screenshots
-
-<!-- Add images to docs/screenshots and link them here -->
 
 ## Author
 
