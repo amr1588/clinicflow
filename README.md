@@ -8,32 +8,36 @@ Built to model a real clinic's workflow rather than a generic CRUD app: business
 
 ### From booking to consultation
 
-| 1. Selection is kept before login | 2. Back at the booking after login |
+| 1. Selection is kept before login | 2. Appointment requested |
 |---|---|
-| ![Booking before login](docs/screenshots/booking-before-login.png) | ![Booking after login](docs/screenshots/booking-after-login.png) |
+| ![Booking before login](docs/screenshots/booking-before-login.png) | ![Appointment requested](docs/screenshots/patient-appointment-requested.png) |
 
-| 3. Secretary receives the request | 4. Secretary actions after confirming |
+| 3. Patient receives request email | 4. Secretary receives the request |
 |---|---|
-| ![Request received](docs/screenshots/secretary-request-received.png) | ![Secretary actions](docs/screenshots/secretary-actions-after-confirm.png) |
+| ![Request email](docs/screenshots/patient-email-request.png) | ![Secretary request received](docs/screenshots/secretary-request-received.png) |
 
-| 5. Patient gets the confirmation email | 6. Doctor adds notes and sees patient history |
+| 5. Secretary actions after confirming | 6. Patient gets confirmation email |
 |---|---|
-| ![Confirmation email](docs/screenshots/patient-email-confirmed.png) | ![Doctor notes](docs/screenshots/doctor-adding-and-viewing-notes.png) |
+| ![Secretary actions](docs/screenshots/secretary-actions-after-confirm.png) | ![Confirmation email](docs/screenshots/patient-email-confirmed.png) |
+
+| 7. Doctor appointments dashboard | 8. Quick-view past notes modal |
+|---|---|
+| ![Doctor appointments](docs/screenshots/doctor-appointments.png) | ![Doctor past notes modal](docs/screenshots/doctor-past-notes-modal.png) |
+
+| 9. Doctor consultation & patient history | 10. Patient appointments portal |
+|---|---|
+| ![Doctor consultation notes](docs/screenshots/doctor-adding-and-viewing-notes.png) | ![Patient appointments](docs/screenshots/patient-appointments.png) |
 
 <details>
-<summary>More screenshots (6)</summary>
+<summary>More screenshots (Authentication & Password Reset)</summary>
 
-| Patient appointments | Doctor appointments |
+| Login | Forgot password |
 |---|---|
-| ![Patient appointments](docs/screenshots/patient-appointments.png) | ![Doctor appointments](docs/screenshots/doctor-appointments.png) |
+| ![Login](docs/screenshots/login.png) | ![Forgot password](docs/screenshots/forgot-password.png) |
 
-| Doctor notes view | Login |
+| Verification code email | |
 |---|---|
-| ![Notes view](docs/screenshots/doctor-appointments-notes-view.png) | ![Login](docs/screenshots/login.png) |
-
-| Forgot password | Verification code email |
-|---|---|
-| ![Forgot password](docs/screenshots/forgot-password.png) | ![Code email](docs/screenshots/forgot-password-email-code.png) |
+| ![Code email](docs/screenshots/forgot-password-email-code.png) | |
 
 </details>
 
