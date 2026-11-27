@@ -188,8 +188,8 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  // ── Step 2: validate OTP locally then advance ─────────────────────────────
-  function handleVerifyOtp(e: React.FormEvent) {
+  // ── Step 2: verify OTP with backend then advance ──────────────────────────
+  async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const code = digits.join("");
@@ -197,7 +197,31 @@ export default function ForgotPasswordPage() {
       setError("Please enter all 6 digits of the code.");
       return;
     }
-    setStep("reset");
+
+    try {
+      setLoading(true);
+      const res = await fetch("/api/auth/verify-code", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          otp: code,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Invalid or expired code. Please try again.");
+      }
+
+      // Code confirmed valid — advance to password step
+      setStep("reset");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   }
 
   // ── Step 3: reset password ────────────────────────────────────────────────
@@ -348,7 +372,17 @@ export default function ForgotPasswordPage() {
                   <OtpInput digits={digits} onChange={setDigits} />
 
                   <button type="submit" disabled={loading} className={btnClass}>
-                    Verify code
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        Verifying…
+                      </span>
+                    ) : (
+                      "Verify code"
+                    )}
                   </button>
                 </form>
 

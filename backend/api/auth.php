@@ -244,6 +244,58 @@ if ($action === 'forgot-password' && $method === 'POST') {
 }
 
 // ---------------------------------------------------------------------------
+// POST /auth/verify-code   body: {"email", "otp"}
+// Validates the OTP without consuming it, so the UI can gate Step 3.
+// ---------------------------------------------------------------------------
+if ($action === 'verify-code' && $method === 'POST') {
+    $email = strtolower(trim($input['email'] ?? ''));
+    $otp   = trim((string) ($input['otp'] ?? ''));
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !preg_match('/^\d{6}$/', $otp)) {
+        error_response('Please provide a valid email and the 6-digit code', 422);
+    }
+
+    $invalid = 'Invalid or expired verification code.';
+
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND is_active = 1");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        error_response($invalid, 400);
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT id, otp_hash, attempts, max_attempts
+        FROM password_resets
+        WHERE user_id = ? AND used_at IS NULL AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$user['id']]);
+    $record = $stmt->fetch();
+
+    if (!$record) {
+        error_response($invalid, 400);
+    }
+
+    if ((int) $record['attempts'] >= (int) $record['max_attempts']) {
+        $pdo->prepare("UPDATE password_resets SET used_at = NOW() WHERE id = ?")
+            ->execute([$record['id']]);
+        error_response('Too many attempts. Please request a new code.', 429);
+    }
+
+    if (!hash_equals($record['otp_hash'], hash('sha256', $otp))) {
+        $pdo->prepare("UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?")
+            ->execute([$record['id']]);
+        error_response($invalid, 400);
+    }
+
+    // Code is valid — do NOT mark as used; reset-password will do that
+    json_response(['data' => ['message' => 'Code verified.']]);
+}
+
+// ---------------------------------------------------------------------------
 // POST /auth/reset-password   body: {"email", "otp", "new_password"}
 // ---------------------------------------------------------------------------
 if ($action === 'reset-password' && $method === 'POST') {
