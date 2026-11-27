@@ -29,13 +29,20 @@ function startsAt(a: Appointment) {
   return new Date(`${a.date}T${a.time}:00`);
 }
 
+function endsAt(a: Appointment) {
+  const start = new Date(`${a.date}T${a.time}:00`);
+  start.setMinutes(start.getMinutes() + (a.duration_minutes ?? 30));
+  return start;
+}
+
 function tabOf(a: Appointment): Tab {
   if (a.status === "cancelled" || a.status === "no_show") return "cancelled";
   const active =
     a.status === "pending" ||
     a.status === "confirmed" ||
     a.status === "checked_in";
-  return active && startsAt(a) > new Date() ? "upcoming" : "past";
+  // Keep in "upcoming" until the appointment's end time has passed
+  return active && endsAt(a) > new Date() ? "upcoming" : "past";
 }
 
 export default function PatientAppointmentsPage() {
@@ -278,7 +285,7 @@ export default function PatientAppointmentsPage() {
           {visible.map((a, i) => {
             const canCancel =
               (a.status === "pending" || a.status === "confirmed") &&
-              startsAt(a) > new Date();
+              endsAt(a) > new Date();
 
             return (
               <motion.li
