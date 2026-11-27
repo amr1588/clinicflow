@@ -366,7 +366,7 @@ function notify_welcome(string $toEmail, string $firstName, string $lastName): v
          <ul style='margin: 12px 0; padding-left: 20px; color: #334155; font-size: 14px; line-height: 1.8;'>
            <li>Browse available doctors and services</li>
            <li>Book, reschedule, or cancel appointments</li>
-           <li>Receive email confirmations and reminders</li>
+           <li>Receive email confirmations</li>
            <li>View your appointment history</li>
          </ul>
          <p>If you ever need help, just reply to this email.</p>"
