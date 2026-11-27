@@ -350,6 +350,33 @@ function notify_appointment_cancelled(PDO $pdo, int $appointmentId, string $canc
 }
 
 // ---------------------------------------------------------------------------
+// Welcome email sent immediately after a patient registers.
+// ---------------------------------------------------------------------------
+function notify_welcome(string $toEmail, string $firstName, string $lastName): void
+{
+    $name    = mail_h($firstName);
+    $full    = mail_h($firstName . ' ' . $lastName);
+    $baseUrl = rtrim(FRONTEND_URL, '/');
+
+    $html = mail_layout(
+        "Welcome to ClinicFlow, {$name}!",
+        "<p>Hi {$name},</p>
+         <p>Thank you for joining <strong>ClinicFlow</strong>. Your account is ready and you can start booking appointments right away.</p>
+         <p>Here is what you can do:</p>
+         <ul style='margin: 12px 0; padding-left: 20px; color: #334155; font-size: 14px; line-height: 1.8;'>
+           <li>Browse available doctors and services</li>
+           <li>Book, reschedule, or cancel appointments</li>
+           <li>Receive email confirmations and reminders</li>
+           <li>View your appointment history</li>
+         </ul>
+         <p>If you ever need help, just reply to this email.</p>"
+        . mail_button($baseUrl . '/book', 'Book your first appointment')
+    );
+
+    send_brevo_email($toEmail, $firstName . ' ' . $lastName, 'Welcome to ClinicFlow! 🎉', $html);
+}
+
+// ---------------------------------------------------------------------------
 // Reminder the day before. Returns true if the email was accepted by Brevo.
 // ---------------------------------------------------------------------------
 function notify_appointment_reminder(PDO $pdo, int $appointmentId): bool

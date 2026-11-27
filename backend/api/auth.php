@@ -56,6 +56,10 @@ if ($action === 'register' && $method === 'POST') {
 
     $userId = (int) $pdo->lastInsertId();
 
+    // Send a welcome email (non-blocking — failure does not abort registration)
+    require_once __DIR__ . '/../mail.php';
+    notify_welcome($email, $first, $last);
+
     session_regenerate_id(true);   // prevents session fixation
     $_SESSION['user_id'] = $userId;
     $_SESSION['role'] = 'patient';
