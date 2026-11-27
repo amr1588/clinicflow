@@ -65,6 +65,13 @@ function BookingFlow() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [booked, setBooked] = useState<CreatedAppointment | null>(null);
 
+  // If the user starts a new selection (URL params change) after a successful
+  // booking, clear the success screen so they can book again fresh.
+  const selectionKey = `${doctorId}|${serviceId}|${date}|${time}`;
+  const [lastBookedKey, setLastBookedKey] = useState<string | null>(null);
+  const visibleBooked =
+    booked && lastBookedKey === selectionKey ? booked : null;
+
   const selectedDoctor = doctors.find((d) => String(d.id) === doctorId);
   const selectedService = selectedDoctor?.services.find(
     (s) => String(s.id) === serviceId,
@@ -261,6 +268,7 @@ function BookingFlow() {
 
       const json: ApiResponse<CreatedAppointment> = await res.json();
       setBooked(json.data);
+      setLastBookedKey(selectionKey);
     } catch (err) {
       setSubmitError(
         err instanceof Error ? err.message : "Something went wrong",
@@ -280,7 +288,7 @@ function BookingFlow() {
     }`;
 
   // ----- Success screen -----
-  if (booked && selectedDoctor && selectedService) {
+  if (visibleBooked && selectedDoctor && selectedService) {
     return (
       <main className="mx-auto max-w-xl px-4 py-16 sm:px-6">
         <div className="rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-sm">
@@ -306,11 +314,11 @@ function BookingFlow() {
             </p>
             <p>
               <span className="text-slate-400">Date: </span>
-              {formatDateNice(booked.date)}
+              {formatDateNice(visibleBooked.date)}
             </p>
             <p>
               <span className="text-slate-400">Time: </span>
-              {formatTime(booked.time)}
+              {formatTime(visibleBooked.time)}
             </p>
           </div>
 
