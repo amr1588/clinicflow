@@ -96,6 +96,65 @@ function doctor_normalize(array &$doctor): void
 }
 
 // ---------------------------------------------------------------------------
+// Helper: check whether a proposed schedule conflicts with existing future
+// pending/confirmed appointments for a doctor.
+//
+// $newByDay — map of day_of_week (int) => array of [start, end] strings ("HH:MM")
+//
+// Returns an array of conflict rows (empty = no conflicts).
+// ---------------------------------------------------------------------------
+function doctor_check_schedule_conflicts(PDO $pdo, int $doctorId, array $newByDay): array
+{
+    // Fetch all future pending/confirmed appointments for this doctor
+    $stmt = $pdo->prepare("
+        SELECT
+            a.id, a.appointment_date, a.appointment_time,
+            DAYOFWEEK(a.appointment_date) - 1 AS day_of_week,
+            u.first_name AS patient_first, u.last_name AS patient_last,
+            s.name AS service_name
+        FROM appointments a
+        JOIN users    u ON u.id = a.patient_id
+        JOIN services s ON s.id = a.service_id
+        WHERE a.doctor_id = ?
+          AND a.status IN ('pending', 'confirmed')
+          AND a.appointment_date >= CURDATE()
+        ORDER BY a.appointment_date, a.appointment_time
+    ");
+    $stmt->execute([$doctorId]);
+    $futureAppts = $stmt->fetchAll();
+
+    $conflicts = [];
+
+    foreach ($futureAppts as $appt) {
+        $day  = (int) $appt['day_of_week'];
+        $time = substr($appt['appointment_time'], 0, 5); // "HH:MM"
+
+        // Day removed entirely from the new schedule
+        if (!isset($newByDay[$day])) {
+            $conflicts[] = $appt;
+            continue;
+        }
+
+        // Check if the appointment time falls within at least one block on that day
+        $covered = false;
+        foreach ($newByDay[$day] as [$blockStart, $blockEnd]) {
+            $bs = substr($blockStart, 0, 5);
+            $be = substr($blockEnd,   0, 5);
+            if ($time >= $bs && $time < $be) {
+                $covered = true;
+                break;
+            }
+        }
+
+        if (!$covered) {
+            $conflicts[] = $appt;
+        }
+    }
+
+    return $conflicts;
+}
+
+// ---------------------------------------------------------------------------
 // GET /doctors — List all active doctors (public)
 // ---------------------------------------------------------------------------
 if ($method === 'GET' && $id === null) {
@@ -329,51 +388,8 @@ if ($method === 'PUT' && $id !== null && ($subresource ?? null) === 'schedule') 
         $newByDay[$wh['day_of_week']][] = [$wh['start_time'], $wh['end_time']];
     }
 
-    // Find future pending/confirmed appointments for this doctor
-    $apptStmt = $pdo->prepare("
-        SELECT
-            a.id, a.appointment_date, a.appointment_time,
-            DAYOFWEEK(a.appointment_date) - 1 AS day_of_week,
-            u.first_name AS patient_first, u.last_name AS patient_last,
-            s.name AS service_name
-        FROM appointments a
-        JOIN users u ON u.id = a.patient_id
-        JOIN services s ON s.id = a.service_id
-        WHERE a.doctor_id = ?
-          AND a.status IN ('pending', 'confirmed')
-          AND a.appointment_date >= CURDATE()
-        ORDER BY a.appointment_date, a.appointment_time
-    ");
-    $apptStmt->execute([$doctorId]);
-    $futureAppts = $apptStmt->fetchAll();
-
-    // Check each appointment against the new schedule
-    $conflicts = [];
-    foreach ($futureAppts as $appt) {
-        $day  = (int) $appt['day_of_week'];
-        $time = substr($appt['appointment_time'], 0, 5); // "HH:MM"
-
-        // This day is no longer in the schedule at all
-        if (!isset($newByDay[$day])) {
-            $conflicts[] = $appt;
-            continue;
-        }
-
-        // Check if the appointment time falls within at least one block on that day
-        $covered = false;
-        foreach ($newByDay[$day] as [$blockStart, $blockEnd]) {
-            $bs = substr($blockStart, 0, 5);
-            $be = substr($blockEnd, 0, 5);
-            if ($time >= $bs && $time < $be) {
-                $covered = true;
-                break;
-            }
-        }
-
-        if (!$covered) {
-            $conflicts[] = $appt;
-        }
-    }
+    // ── Conflict check (shared helper) ────────────────────────────────────
+    $conflicts = doctor_check_schedule_conflicts($pdo, $doctorId, $newByDay);
 
     if (!empty($conflicts)) {
         $conflictList = array_map(fn($a) => [
@@ -526,8 +542,55 @@ if (($method === 'PATCH' || $method === 'PUT') && $id !== null && ($subresource 
             }
         }
 
-        // ── Working hours: full replacement (no conflict check here — use PUT /schedule for that)
+        // ── Working hours: full replacement with conflict detection ────────
         if (isset($input['working_hours']) && is_array($input['working_hours'])) {
+            // First validate and build the new schedule
+            $validatedHours = [];
+            foreach ($input['working_hours'] as $wh) {
+                $day   = filter_var($wh['day_of_week'] ?? null, FILTER_VALIDATE_INT);
+                $start = sanitize_string($wh['start_time'] ?? null);
+                $end   = sanitize_string($wh['end_time']   ?? null);
+
+                if ($day === false || $day < 0 || $day > 6 || !$start || !$end || $start >= $end) {
+                    continue; // skip malformed rows silently (they come from the UI toggles)
+                }
+                if (!preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $start) ||
+                    !preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $end)) {
+                    continue;
+                }
+                $validatedHours[] = ['day_of_week' => $day, 'start_time' => $start, 'end_time' => $end];
+            }
+
+            // Build lookup for the shared conflict checker
+            $newByDay = [];
+            foreach ($validatedHours as $wh) {
+                $newByDay[$wh['day_of_week']][] = [$wh['start_time'], $wh['end_time']];
+            }
+
+            // Check for conflicts BEFORE touching the database
+            // (must run outside the open transaction so we can return a clean 409)
+            $scheduleConflicts = doctor_check_schedule_conflicts($pdo, $doctorId, $newByDay);
+
+            if (!empty($scheduleConflicts)) {
+                // Roll back any profile/service changes already staged in the transaction
+                if ($pdo->inTransaction()) $pdo->rollBack();
+
+                $conflictList = array_map(fn($a) => [
+                    'id'      => (int) $a['id'],
+                    'date'    => $a['appointment_date'],
+                    'time'    => substr($a['appointment_time'], 0, 5),
+                    'patient' => $a['patient_first'] . ' ' . $a['patient_last'],
+                    'service' => $a['service_name'],
+                ], $scheduleConflicts);
+
+                error_response(
+                    'Schedule change conflicts with ' . count($scheduleConflicts) . ' existing appointment(s). Resolve them first.',
+                    409,
+                    ['conflicts' => $conflictList]
+                );
+            }
+
+            // No conflicts — replace the schedule
             $pdo->prepare("DELETE FROM doctor_working_hours WHERE doctor_id = ?")
                 ->execute([$doctorId]);
 
@@ -535,15 +598,8 @@ if (($method === 'PATCH' || $method === 'PUT') && $id !== null && ($subresource 
                 INSERT INTO doctor_working_hours (doctor_id, day_of_week, start_time, end_time)
                 VALUES (?, ?, ?, ?)
             ");
-            foreach ($input['working_hours'] as $wh) {
-                $day   = filter_var($wh['day_of_week'] ?? null, FILTER_VALIDATE_INT);
-                $start = preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $wh['start_time'] ?? '') ? $wh['start_time'] : null;
-                $end   = preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $wh['end_time']   ?? '') ? $wh['end_time']   : null;
-
-                if ($day === false || $day < 0 || $day > 6 || !$start || !$end || $start >= $end) {
-                    continue; // skip invalid rows
-                }
-                $insStmt->execute([$doctorId, $day, $start, $end]);
+            foreach ($validatedHours as $wh) {
+                $insStmt->execute([$doctorId, $wh['day_of_week'], $wh['start_time'], $wh['end_time']]);
             }
         }
 
