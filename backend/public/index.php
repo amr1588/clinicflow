@@ -112,8 +112,9 @@ if (APP_BASE_PATH !== '' && str_starts_with($requestUri, APP_BASE_PATH)) {
 $path     = trim($requestUri, '/');
 $segments = $path !== '' ? explode('/', $path) : [];
 
-$resource = $segments[0] ?? null;
-$id       = $segments[1] ?? null;
+$resource    = $segments[0] ?? null;
+$id          = $segments[1] ?? null;
+$subresource = $segments[2] ?? null; // e.g. /doctors/3/schedule → "schedule"
 
 // No resource specified → API info
 if ($resource === null || $resource === '') {

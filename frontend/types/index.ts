@@ -65,15 +65,30 @@ export interface WorkingHours {
 // ---------------------------------------------------------------------------
 export interface DoctorDetail {
   id: number;
+  user_id?: number;
   first_name: string;
   last_name: string;
+  email: string;           // included in API response
+  phone: string | null;    // included in API response
   specialty: string;
   bio: string | null;
   consultation_fee: string; // DECIMAL comes as string
   consultation_duration: number;
   photo_url: string | null;
+  is_active: number;        // 0 or 1
   services: Service[];
   working_hours?: WorkingHours[]; // Only on detail endpoint
+}
+
+// ---------------------------------------------------------------------------
+// Schedule conflict (returned on 409 from PUT /doctors/:id/schedule)
+// ---------------------------------------------------------------------------
+export interface ScheduleConflict {
+  id: number;
+  date: string;    // "2026-12-02"
+  time: string;    // "09:00"
+  patient: string; // "Sara Ali"
+  service: string; // "Acne Treatment"
 }
 
 // ---------------------------------------------------------------------------
